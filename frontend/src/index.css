@@ -1,176 +1,158 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 2%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 5%;
-  --card-foreground: 0 0% 98%;
-  --popover: 0 0% 5%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 10%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 10%;
-  --muted-foreground: 0 0% 55%;
-  --accent: 0 0% 10%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 355 85% 55%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 12%;
-  --input: 0 0% 12%;
-  --ring: 355 85% 55%;
+  --deep: #06131a;
+  --ink: #e9fffb;
+  --muted: #8faeaa;
+  --line: rgba(125, 243, 221, 0.18);
+  --teal: #57d6c8;
+  --mint: #8cf2db;
+  --blue: #83a7e9;
+  --gold: #ffd166;
+  --coral: #ff7a8a;
+
+  /* shadcn compatibility (kept for existing ui components) */
+  --background: 199 55% 6%;
+  --foreground: 168 100% 96%;
+  --card: 195 40% 12%;
+  --card-foreground: 168 100% 96%;
+  --popover: 199 50% 8%;
+  --popover-foreground: 168 100% 96%;
+  --primary: 172 63% 59%;
+  --primary-foreground: 199 55% 6%;
+  --secondary: 195 30% 16%;
+  --secondary-foreground: 168 100% 96%;
+  --muted: 195 15% 62%;
+  --muted-foreground: 190 12% 62%;
+  --accent: 172 63% 59%;
+  --accent-foreground: 199 55% 6%;
+  --destructive: 351 100% 74%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 168 60% 72%;
+  --input: 195 30% 18%;
+  --ring: 172 63% 59%;
   --radius: 1rem;
-  --chart-1: 220 70% 50%;
-  --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  overflow-x: hidden;
-}
+html, body, #root { height: 100%; width: 100%; overflow-x: hidden; }
 
 body {
-  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #050505;
-  color: #ffffff;
-  overflow-x: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 70% 44% at 50% -8%, rgba(82, 216, 198, 0.27), transparent 72%),
+    radial-gradient(ellipse 45% 33% at 100% 36%, rgba(111, 132, 232, 0.16), transparent 70%),
+    radial-gradient(ellipse 42% 35% at 0% 76%, rgba(41, 155, 167, 0.12), transparent 72%),
+    linear-gradient(145deg, #06131a 0%, #071b22 48%, #061219 100%);
+  background-attachment: fixed;
 }
 
-/* Telegram Mini App optimizations */
 html {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(140, 242, 219, 0.18); border-radius: 4px; }
+
+::selection { background: rgba(140, 242, 219, 0.25); color: #fff; }
+
+/* Typography helpers */
+.font-mono-tk { font-family: 'DM Mono', monospace; }
+.tk-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tk-heading { letter-spacing: -0.05em; font-weight: 800; }
+
+/* Cards / surfaces */
+.tk-card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(160deg, rgba(18, 56, 63, 0.55), rgba(5, 20, 27, 0.77));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22), inset 0 1px rgba(255, 255, 255, 0.035);
+}
+.tk-row {
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: rgba(10, 35, 43, 0.77);
+  transition: transform 0.24s ease, border-color 0.24s ease, background 0.24s ease;
+}
+.tk-row:hover {
+  transform: translateY(-2px);
+  border-color: rgba(140, 242, 219, 0.44);
+  background: rgba(16, 56, 64, 0.92);
+}
+.tk-pill {
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: rgba(10, 42, 49, 0.45);
+  color: #b9d9d4;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Asymmetric icon tile from the design language */
+.tk-icon-tile {
+  border: 1px solid rgba(125, 243, 221, 0.24);
+  border-radius: 13px 6px 13px 6px;
+  background: rgba(2, 19, 26, 0.36);
+  color: var(--teal);
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-/* Premium glass effect */
-.glass-card {
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Glow effects */
-.glow-green {
-  box-shadow: 0 0 20px rgba(0, 230, 118, 0.3), 0 0 40px rgba(0, 230, 118, 0.1);
-}
-
-.glow-red {
-  box-shadow: 0 0 20px rgba(255, 42, 58, 0.3), 0 0 40px rgba(255, 42, 58, 0.1);
-}
-
-/* Hold button pulse animation */
-@keyframes hold-pulse {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.4);
-  }
-  50% {
-    transform: scale(1.02);
-    box-shadow: 0 0 0 20px rgba(0, 230, 118, 0);
-  }
-}
-
-.hold-pulse {
-  animation: hold-pulse 2s ease-in-out infinite;
-}
-
-/* Ripple effect */
-@keyframes ripple {
-  0% {
-    transform: scale(0);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(4);
-    opacity: 0;
-  }
-}
-
-.ripple {
-  animation: ripple 0.6s ease-out;
-}
-
-/* Progress ring animation */
-.progress-ring {
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-}
-
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(135deg, #00E676 0%, #00C853 100%);
-  -webkit-background-clip: text;
+/* Glows */
+.glow-mint { box-shadow: 0 0 20px rgba(93, 227, 208, 0.35), 0 0 44px rgba(93, 227, 208, 0.12); }
+.glow-gold { box-shadow: 0 0 22px rgba(255, 209, 102, 0.3); }
+.text-gradient-mint {
+  background: linear-gradient(135deg, var(--mint), var(--blue));
+  -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
-.gradient-text-red {
-  background: linear-gradient(135deg, #FF2A3A 0%, #FF6B6B 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
+/* Orbs */
+.tk-orb { position: fixed; border-radius: 50%; pointer-events: none; opacity: 0.7; z-index: 0; }
+.tk-orb.one { width: 340px; height: 340px; top: 6vh; left: -190px;
+  border: 1px solid rgba(113, 240, 221, 0.11); box-shadow: 0 0 70px rgba(69, 218, 198, 0.11) inset; }
+.tk-orb.two { width: 220px; height: 220px; right: -95px; bottom: 12vh;
+  background: radial-gradient(circle, rgba(125, 145, 246, 0.12), transparent 68%); }
 
-/* Utility classes */
-.safe-area-bottom {
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
+/* Charge ring (agent tap) */
+@keyframes ringTwinkle {
+  0%,100% { opacity: 0.72; filter: drop-shadow(0 0 5px rgba(87,214,200,.3)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 13px rgba(140,242,219,.7)); }
 }
+@keyframes ambientRing {
+  0%,100% { opacity: 0.55; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.95; transform: translateX(-50%) scale(1.018); }
+}
+@keyframes portraitCharge { 50% { transform: scale(0.985); box-shadow: 0 0 52px rgba(255,209,102,.58); } }
+@keyframes beacon { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.72); opacity: 0.65; } }
 
-.safe-area-top {
-  padding-top: max(16px, env(safe-area-inset-top));
-}
+.safe-area-bottom { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.safe-area-top { padding-top: max(14px, env(safe-area-inset-top)); }
+.no-select { user-select: none; -webkit-user-select: none; }
 
-/* Base layer for shadcn */
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
+/* Hide native number spinners for a consistent theme */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
 
 @layer base {
-  [data-debug-wrapper="true"] {
-    display: contents !important;
-  }
+  * { @apply border-border; }
 }
-
-/* Disable text selection on interactive elements */
-.no-select {
-  user-select: none;
-  -webkit-user-select: none;
+@layer base {
+  [data-debug-wrapper="true"] { display: contents !important; }
 }

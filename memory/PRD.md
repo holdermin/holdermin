@@ -1,31 +1,39 @@
-# TronKeeper Mini App — PRD
+# TronKeeper — PRD
 
-## Original Problem Statement
-User imported a TON/TRON crypto Telegram mini-app (TronKeeper, React + Vite, frontend-only, mocked data) from their GitHub and wanted aesthetic/visual + functional improvements.
+## Problem Statement
+Admin imported a TON/TRON crypto Telegram mini-app and wanted it upgraded into a real product:
+1. Admin-managed crypto charts (users only view; admin adds/removes).
+2. Real market data (Binance is geo-blocked → **CoinGecko** used).
+3. Spot trading: users BUY with USDT balance and SELL back to USDT. Spot holdings are **NOT withdrawable**; only wallet balance (USDT/TRX) is withdrawable.
+4. Remove Deposit & Withdraw from Home.
+5. Full visual redesign to a teal/mint + gold dark theme (Manrope + DM Mono) per provided HTML.
 
-## Requested Changes (this session)
-1. Integrate the standalone **History** page INTO the **Wallet** page.
-2. Add a new **Trade** page in the CENTER of the bottom navigation.
-3. Trade page shows 10 main crypto charts; user can add their own charts anytime.
+## Architecture
+- Frontend: React + Vite (Telegram mini-app). Theme in `index.css` + `tailwind.config.js`. Charts via Recharts (SVG) fed by backend.
+- Backend: FastAPI + MongoDB (`/app/backend/server.py`). CoinGecko proxy with in-memory TTL cache.
+- User identity: localStorage `tk_uid` (or `TG_<id>` in Telegram). New users seeded 1000 USDT + 50 TRX (virtual).
+- Admin: hidden route `#admin`, JWT auth (bcrypt), brute-force lockout, protects chart CRUD.
 
-## Tech Stack
-- React 19 + Vite (frontend only, no backend). Data mocked in `services/api.js` dev mode.
-- TailwindCSS, framer-motion, lucide-react, shadcn/ui, TonConnect.
-- Live charts via TradingView embed widgets (external CDN, no API key).
+## Key Endpoints
+- GET /api/charts · POST /api/user/init · GET /api/user/{uid} · GET /api/user/{uid}/transactions
+- POST /api/spot/buy · POST /api/spot/sell · POST /api/wallet/withdraw
+- GET /api/market/search · GET /api/market/coin/{id}/chart
+- POST /api/admin/login · GET /api/admin/me · POST/DELETE /api/admin/charts
 
 ## Implemented (2026-09-05)
-- **Bottom nav** redesigned to 5 items with an elevated green center **Trade** button; old History tab removed. (`components/layout/BottomNav.jsx`)
-- **Trade page** (`pages/Trade.jsx`): grid of TradingView mini charts (BTC, ETH, BNB, SOL, XRP, TON, TRX, DOGE, ADA, AVAX). Add chart (ticker or EXCHANGE:PAIR) + popular suggestion chips, remove chart, reset to defaults. Persists to localStorage (`tk_trade_charts_v1`). Tap a card / expand button opens full advanced-chart modal.
-  - `components/trade/`: TradingViewWidget, ChartCard, AddChartModal, ChartDetailModal
-  - `constants/cryptoSymbols.js`: defaults, suggestions, load/save, buildChartEntry
-- **Wallet page** (`pages/Wallet.jsx`): segmented Assets / History tabs; History renders the transaction list inline. Added sample transactions to `services/api.js` mock.
-- Fixed Vite `allowedHosts` to allow preview subdomains.
-- StrictMode-safe TradingView embed (no console errors); controls moved to own row (no title overlap).
+- Full teal/mint redesign across Home, Trade, Wallet, Missions, Invite, BottomNav (elevated center Trade), Header, loading/error.
+- Home: mascot "charge the agent" hero (generated image), portfolio summary, Start Trading; NO deposit/withdraw.
+- Trade: grid of admin charts with real price, 24h %, sparkline; detail modal with real line chart (1D/1W/1M/1Y) + Buy/Sell panel.
+- Wallet: Assets (total, withdrawable USDT/TRX with Send→WithdrawModal, locked Spot holdings) + History tabs.
+- Admin panel (#admin): login, live chart list, search-to-add (CoinGecko), remove.
+- Backend spot buy/sell/withdraw, transactions, admin+chart seeding.
+- Tested: backend 91% (fixed the 2 failures), frontend 95%. Post-fix verified: correct holding symbols, invalid-id→400, admin auth 401, missing user→404, modal auto-close, Sell-from-holding, consistent currency formatting, spinner hidden.
 
-## Status
-- Frontend tested via testing agent: 13/13 functional scenarios passed. 0 console errors after fixes.
+## Credentials
+See `/app/memory/test_credentials.md` (admin: admin@tronkeeper.app / TronKeeper#Admin2026).
 
-## Backlog / Next
-- P1: Validate typed tickers against a symbol list (unknown ticker renders empty card).
-- P2: Optional drag-to-reorder charts; watchlist grouping.
-- P2: Wire real backend endpoints (currently mocked): transactions, auth, hold, referrals.
+## Notes / Backlog
+- CoinGecko free tier rate-limits; backend caches + serves stale on 429. A CoinGecko demo API key would harden this. P1.
+- Spot buy/sell use read-modify-write on holdings (no atomic lock) — fine for single-user usage; P2 to make atomic.
+- Missions are static (not wired to backend progress). P2.
+- Supabase was requested for admin; used platform MongoDB + JWT instead (Supabase needs external keys).

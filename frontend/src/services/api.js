@@ -1,71 +1,25 @@
 /**
- * TronKeeper API Service - TON Claims System
- * 
- * Architecture: Telegram Mini App -> Cloudflare Worker -> Supabase
+ * TronKeeper API — talks to the FastAPI backend (CoinGecko-powered market data,
+ * admin-managed charts, spot trading, wallet).
  */
+const BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+const API = `${BASE}/api`;
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://tkworker.tkexchange.workers.dev';
-const TELEGRAM_BOT_URL = import.meta.env.VITE_TELEGRAM_BOT_URL || 'https://t.me/TKcex_bot';
-const DEPOSIT_ADDRESS = import.meta.env.VITE_DEPOSIT_ADDRESS || 'TNjqVzo47ndAvH241njkMLKbda3G6FPgVs';
-const TREASURY_WALLET = 'UQCydneDGeAcamdCFS6e13Z2xoxwA5DsLkFONRdp-cavw-Th';
+// ----------------------------------------------------------------------------
+// Telegram helpers
+// ----------------------------------------------------------------------------
+const getTelegram = () =>
+  (typeof window !== 'undefined' && window.Telegram?.WebApp) ? window.Telegram.WebApp : null;
 
-// Dev mode detection
-const IS_DEV = typeof window !== 'undefined' && !window.Telegram?.WebApp?.initData;
-
-// Mock data for development
-const MOCK_USER = {
-  uid: 'TK_DEV_12345',
-  usdt_balance: 0.15,
-  trx_balance: 5.00,
-  ton_balance: 0,
-  total_refs: 3,
-  trx_refs: 6.00,
-};
-
-const MOCK_CYCLE = {
-  id: 'mock_cycle_1',
-  holds_completed: 0,
-  ends_at: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-  remaining_holds: 3,
-};
-
-const now = Date.now();
-const MOCK_TRANSACTIONS = [
-  { id: 'tx_1', type: 'reward', asset: 'USDT', amount: 0.15, status: 'confirmed', timestamp: new Date(now - 1 * 3600e3).toISOString(), description: 'Hold reward claimed' },
-  { id: 'tx_2', type: 'deposit', asset: 'USDT', amount: 10.0, status: 'confirmed', timestamp: new Date(now - 6 * 3600e3).toISOString() },
-  { id: 'tx_3', type: 'referral', asset: 'TRX', amount: 2.0, status: 'confirmed', timestamp: new Date(now - 20 * 3600e3).toISOString(), description: 'Referral bonus' },
-  { id: 'tx_4', type: 'withdraw', asset: 'USDT', amount: 5.0, status: 'pending', timestamp: new Date(now - 26 * 3600e3).toISOString(), toAddress: 'TNjqVzo47ndAvH241njkMLKbda3G6FPgVs' },
-  { id: 'tx_5', type: 'reward', asset: 'USDT', amount: 0.15, status: 'confirmed', timestamp: new Date(now - 48 * 3600e3).toISOString(), description: 'Hold reward claimed' },
-  { id: 'tx_6', type: 'withdraw', asset: 'TRX', amount: 3.5, status: 'confirmed', timestamp: new Date(now - 72 * 3600e3).toISOString(), toAddress: 'TWd4kZ8h1pQmRfa9cX2bNvUj7sLmYpG3tZ' },
-];
-
-// ============================================
-// TELEGRAM HELPERS
-// ============================================
-const getTelegram = () => {
-  if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-    return window.Telegram.WebApp;
-  }
-  return null;
-};
-
-const getInitData = () => {
-  const tg = getTelegram();
-  return tg?.initData || null;
-};
-
-export const getTelegramUser = () => {
-  const tg = getTelegram();
-  return tg?.initDataUnsafe?.user || null;
-};
+export const getTelegramUser = () => getTelegram()?.initDataUnsafe?.user || null;
 
 export const initTelegram = () => {
   const tg = getTelegram();
   if (tg) {
     tg.ready();
     tg.expand();
-    if (tg.setHeaderColor) tg.setHeaderColor('#050505');
-    if (tg.setBackgroundColor) tg.setBackgroundColor('#050505');
+    if (tg.setHeaderColor) tg.setHeaderColor('#06131a');
+    if (tg.setBackgroundColor) tg.setBackgroundColor('#06131a');
   }
 };
 
@@ -82,230 +36,68 @@ export const hapticFeedback = (type = 'impact') => {
   }
 };
 
-export const shareReferralLink = (uid) => {
-  const tg = getTelegram();
-  const link = `${TELEGRAM_BOT_URL}?start=${uid}`;
-  const text = '🎁 Join TronKeeper and earn rewards! Hold to earn daily.';
-  
-  if (tg?.openTelegramLink) {
-    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
-  } else {
-    window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, '_blank');
+// stable per-device uid
+export const getUid = () => {
+  const tgUser = getTelegramUser();
+  if (tgUser?.id) return `TG_${tgUser.id}`;
+  let uid = localStorage.getItem('tk_uid');
+  if (!uid) {
+    uid = 'TK_' + Math.random().toString(36).slice(2, 10).toUpperCase();
+    localStorage.setItem('tk_uid', uid);
   }
+  return uid;
 };
 
-// ============================================
-// API HELPERS
-// ============================================
-const apiCall = async (endpoint, body = {}) => {
-  const initData = getInitData();
-  
-  if (IS_DEV || !initData) {
-    console.warn(`[DEV MODE] ${endpoint}`);
-    return null;
-  }
-
-  const response = await fetch(`${WORKER_URL}${endpoint}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ initData, ...body }),
+// ----------------------------------------------------------------------------
+// HTTP helper
+// ----------------------------------------------------------------------------
+async function req(path, { method = 'GET', body, token } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `Request failed: ${response.status}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || data.error || `Request failed (${res.status})`);
   }
+  return data;
+}
 
-  return response.json();
-};
+// ----------------------------------------------------------------------------
+// Public / user endpoints
+// ----------------------------------------------------------------------------
+export const getCharts = () => req('/charts');
+export const initUser = (uid) => req('/user/init', { method: 'POST', body: { uid } });
+export const getUser = (uid) => req(`/user/${uid}`);
+export const getUserTransactions = (uid) => req(`/user/${uid}/transactions`);
+export const getCoinChart = (coinId, days = '1') =>
+  req(`/market/coin/${coinId}/chart?days=${days}`);
+export const searchCoins = (q) => req(`/market/search?q=${encodeURIComponent(q)}`);
 
-// ============================================
-// AUTH
-// ============================================
-export const authUser = async () => {
-  try {
-    const result = await apiCall('/auth');
-    if (result) return result;
-    
-    // Dev mode fallback
-    return {
-      ok: true,
-      user: MOCK_USER,
-      cycle: MOCK_CYCLE,
-      pending_claim: null,
-      treasury_wallet: TREASURY_WALLET,
-    };
-  } catch (error) {
-    console.error('Auth error:', error);
-    if (IS_DEV) {
-      return {
-        ok: true,
-        user: MOCK_USER,
-        cycle: MOCK_CYCLE,
-        pending_claim: null,
-        treasury_wallet: TREASURY_WALLET,
-      };
-    }
-    throw error;
-  }
-};
+export const spotBuy = (uid, coinId, quoteAmount) =>
+  req('/spot/buy', { method: 'POST', body: { uid, coin_id: coinId, quote_amount: quoteAmount } });
+export const spotSell = (uid, coinId, baseAmount) =>
+  req('/spot/sell', { method: 'POST', body: { uid, coin_id: coinId, base_amount: baseAmount } });
+export const withdrawFunds = (uid, asset, amount, toAddress) =>
+  req('/wallet/withdraw', { method: 'POST', body: { uid, asset, amount, to_address: toAddress } });
 
-// ============================================
-// HOLD - Register hold and get claim if 3rd
-// ============================================
-export const registerHold = async (prize) => {
-  try {
-    const result = await apiCall('/hold', { prize });
-    if (result) return result;
-    
-    // Dev mode
-    MOCK_CYCLE.holds_completed++;
-    MOCK_CYCLE.remaining_holds--;
-    
-    const isThird = MOCK_CYCLE.holds_completed === 3;
-    
-    return {
-      ok: true,
-      hold_number: MOCK_CYCLE.holds_completed,
-      remaining_holds: MOCK_CYCLE.remaining_holds,
-      cycle_complete: isThird,
-      claim: isThird ? {
-        claim_id: `CLM_DEV_${Date.now()}`,
-        total_prize: 0.15,
-        ton_fee: 0.05,
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        treasury_wallet: TREASURY_WALLET,
-      } : null,
-    };
-  } catch (error) {
-    console.error('Hold error:', error);
-    throw error;
-  }
-};
-
-// ============================================
-// GET CLAIM - Check pending claim status
-// ============================================
-export const getClaim = async () => {
-  try {
-    const result = await apiCall('/get-claim');
-    if (result) return result;
-    return { ok: true, claim: null };
-  } catch (error) {
-    console.error('Get claim error:', error);
-    throw error;
-  }
-};
-
-// ============================================
-// VERIFY PAYMENT - After TON transfer
-// ============================================
-// Backend verifies the TX on-chain via TonCenter using sender_address +
-// claim_id. The frontend never supplies the tx_hash.
-export const verifyPayment = async (claimId, senderAddress) => {
-  try {
-    const result = await apiCall('/verify-payment', {
-      claim_id: claimId,
-      sender_address: senderAddress,
-    });
-    if (result) return result;
-
-    // Dev mode
-    MOCK_USER.usdt_balance += 0.15;
-    MOCK_CYCLE.holds_completed = 0;
-    MOCK_CYCLE.remaining_holds = 3;
-
-    return {
-      ok: true,
-      credited: 0.15,
-      new_balance: MOCK_USER.usdt_balance,
-    };
-  } catch (error) {
-    console.error('Verify payment error:', error);
-    throw error;
-  }
-};
-
-// ============================================
-// WITHDRAW (existing flow - TRON withdrawals)
-// ============================================
-export const requestWithdraw = async ({ asset, amount, toAddress }) => {
-  try {
-    const result = await apiCall('/withdraw', { asset, amount, toAddress });
-    if (result) return result;
-    
-    // Dev mode
-    return {
-      ok: true,
-      status: 'pending',
-      txId: `dev_${Date.now()}`,
-      message: 'Dev mode - withdrawal simulated',
-    };
-  } catch (error) {
-    console.error('Withdraw error:', error);
-    throw error;
-  }
-};
-
-// ============================================
-// TRANSACTIONS
-// ============================================
-export const getTransactions = async () => {
-  try {
-    const result = await apiCall('/transactions');
-    if (result) return result;
-    return { ok: true, transactions: MOCK_TRANSACTIONS };
-  } catch (error) {
-    console.error('Transactions error:', error);
-    return { ok: true, transactions: MOCK_TRANSACTIONS };
-  }
-};
-
-// ============================================
-// REFERRALS
-// ============================================
-export const getReferralPool = async () => {
-  try {
-    const result = await apiCall('/referrals');
-    if (result) return result;
-    return {
-      ok: true,
-      pool: { total_pool: 50000, remaining: 42000, your_earnings: 6.00 }
-    };
-  } catch (error) {
-    console.error('Referrals error:', error);
-    return {
-      ok: true,
-      pool: { total_pool: 50000, remaining: 42000, your_earnings: 0 }
-    };
-  }
-};
-
-// ============================================
-// CONSTANTS
-// ============================================
-export const DEPOSIT_INFO = {
-  network: 'TRON (TRC-20)',
-  address: DEPOSIT_ADDRESS,
-};
-
-export const TON_CONFIG = {
-  treasury_wallet: TREASURY_WALLET,
-  fee: 0.05,
-  claim_expiry_minutes: 15,
-};
+// ----------------------------------------------------------------------------
+// Admin endpoints
+// ----------------------------------------------------------------------------
+export const adminLogin = (email, password) =>
+  req('/admin/login', { method: 'POST', body: { email, password } });
+export const adminMe = (token) => req('/admin/me', { token });
+export const adminAddChart = (coinId, token) =>
+  req('/admin/charts', { method: 'POST', body: { coin_id: coinId }, token });
+export const adminDeleteChart = (chartId, token) =>
+  req(`/admin/charts/${chartId}`, { method: 'DELETE', token });
 
 export default {
-  authUser,
-  registerHold,
-  getClaim,
-  verifyPayment,
-  getTransactions,
-  getReferralPool,
-  getTelegramUser,
-  initTelegram,
-  hapticFeedback,
-  shareReferralLink,
-  DEPOSIT_INFO,
-  TON_CONFIG,
+  getCharts, initUser, getUser, getUserTransactions, getCoinChart, searchCoins,
+  spotBuy, spotSell, withdrawFunds,
+  adminLogin, adminMe, adminAddChart, adminDeleteChart,
+  getUid, hapticFeedback, getTelegramUser, initTelegram,
 };

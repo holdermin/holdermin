@@ -1,46 +1,33 @@
 import { useWallet } from '@/contexts/WalletContext';
+import { fmtNum } from '@/lib/format';
+
+const LOGO = 'https://static.prod-images.emergentagent.com/jobs/6376387f-acd3-446c-bd54-4c331bde845d/images/97f863b07ca172464df7862e9a0b8fccf3405fe500f01c490a145b70cb440db6.jpeg';
 
 export function Header() {
-  const { user, usdtBalance, trxBalance } = useWallet();
-
-  const getInitials = () => {
-    if (!user) return '?';
-    const first = user.first_name?.[0] || '';
-    const last = user.last_name?.[0] || '';
-    return (first + last).toUpperCase() || user.username?.[0]?.toUpperCase() || '?';
-  };
+  const { tgUser, usdtBalance, portfolioValue } = useWallet();
+  const total = fmtNum(usdtBalance + portfolioValue);
 
   return (
     <header className="flex items-center justify-between px-4 py-3 safe-area-top" data-testid="header">
-      {/* Avatar + Name */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-red/30 to-brand-green/30 flex items-center justify-center border border-white/10">
-          {user?.photo_url ? (
-            <img 
-              src={user.photo_url} 
-              alt="Avatar" 
-              className="w-full h-full rounded-full object-cover"
-            />
-          ) : (
-            <span className="text-sm font-bold text-white/80">{getInitials()}</span>
-          )}
-        </div>
-        <div>
-          <h1 className="font-display text-sm font-semibold text-white">
-            TronKeeper
-          </h1>
-          <p className="text-xs text-white/40">
-            {user?.username ? `@${user.username}` : 'Welcome'}
-          </p>
-        </div>
+      <div className="flex items-center gap-2.5">
+        <span className="w-8 h-8 grid place-items-center rounded-[8px_2px_8px_2px] border border-mint/40 glow-mint overflow-hidden">
+          <img src={LOGO} alt="TronKeeper" className="w-full h-full object-cover" />
+        </span>
+        <span className="font-mono text-[0.72rem] tracking-[0.14em] uppercase text-ink">TronKeeper</span>
       </div>
 
-      {/* Quick Balance */}
-      <div className="text-right">
-        <div className="flex items-baseline gap-1">
-          <span className="text-lg font-bold text-white">${usdtBalance.toFixed(2)}</span>
+      <div className="flex items-center gap-3">
+        <span className="hidden xs:inline-flex items-center gap-1.5 tk-label">
+          <i className="w-[7px] h-[7px] rounded-full bg-mint" style={{ boxShadow: '0 0 0 4px rgba(140,242,219,.1),0 0 12px #8cf2db', animation: 'beacon 2.2s ease-in-out infinite' }} />
+          online
+        </span>
+        <div className="text-right">
+          <p className="tk-label">Total</p>
+          <p className="text-sm font-bold text-ink">${total}</p>
         </div>
-        <p className="text-xs text-white/40">{trxBalance.toFixed(2)} TRX</p>
+        {tgUser?.photo_url && (
+          <img src={tgUser.photo_url} alt="me" className="w-9 h-9 rounded-full object-cover border border-line" />
+        )}
       </div>
     </header>
   );

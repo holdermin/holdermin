@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 2 full-stack test of TronKeeper (FastAPI+Mongo backend, React/Vite TG mini-app). Backend: 23 pytest cases over /api/charts, /api/market/*, admin JWT auth, admin chart CRUD, /api/spot/buy|sell, /api/wallet/withdraw, transactions -> 21/23 pass (91%). Frontend: Home (no Deposit/Withdraw), bottom nav (5 items), Trade grid with 10 real-price coin cards, coin detail modal (Recharts SVG + 1D/1W/1M/1Y ranges), Buy 150 USDT -> holding appears in Wallet, Sell 0.01 ETH -> USDT credited, Withdraw 50 USDT -> balance reduced + pending tx in History, Admin #admin login (wrong pw rejected) + search/add/remove litecoin chart. All primary user flows work with no uncaught console/page errors. Main defects: CoinGecko 429 rate-limiting degrades single-coin lookups (wrong holding symbol/name/image, false 404 on admin add), 500 on DELETE /api/admin/charts/{invalid-objectid}, and missing playbook auth hardening (no brute-force lockout, wildcard CORS with allow_credentials).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/spot/buy", "issue": "get_markets([coin_id]) uses a separate cache key from the /api/charts batch call and frequently gets HTTP 429 from CoinGecko. When it fails, the holding is stored with symbol=coin_id.upper() ('ETHEREUM' instead of 'ETH'), name=coin_id and image='' permanently in Mongo, and the buy/sell transaction asset label is wrong. Fix: resolve symbol/name/image from the cached batch markets list (or db.charts doc) instead of a fresh per-coin CoinGecko call, and/or add retry+longer TTL/backoff.", "priority": "HIGH"},
+      {"endpoint": "DELETE /api/admin/charts/{chart_id}", "issue": "Non-ObjectId path param raises bson InvalidId -> 500 Internal Server Error. Validate ObjectId and return 400/404.", "priority": "HIGH"},
+      {"endpoint": "POST /api/admin/charts", "issue": "A CoinGecko 429 (rate limit) is reported as 404 'Coin not found on CoinGecko'. Reproduced: adding 'litecoin' failed with 404 during a rate-limited window, then succeeded 60s later. Distinguish upstream rate-limit/failure (503 'market data temporarily unavailable') from a genuinely unknown coin.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/login", "issue": "No brute-force protection: 6 consecutive wrong passwords all return 401 and the 7th correct attempt still logs in (playbook requires lockout after 5 fails)."},
+      {"endpoint": "CORS middleware", "issue": "allow_origins defaults to '*' (CORS_ORIGINS=\"*\") together with allow_credentials=True; browsers will refuse to send the httpOnly admin_token cookie cross-origin. Use explicit origin list."},
+      {"endpoint": "GET /api/user/{uid}/transactions", "issue": "Sorted by ISO 'timestamp' string, ordering verified OK, but buy/sell tx have status 'confirmed' hardcoded via record_tx while withdraw overrides it - acceptable, just noting the duplicate status source."},
+      {"endpoint": "GET /api/charts, /api/user/{uid}", "issue": "If CoinGecko 429s with a cold cache, price/change_24h/sparkline and holding value/pnl are returned as null with no error flag; UI then has to render nulls. Consider persisting last-known prices in Mongo as a fallback."},
+      {"endpoint": "GET /api/user/{uid}", "issue": "GET (a read endpoint) creates the user if missing (get_or_create_user), so any arbitrary uid silently gets 1000 USDT seeded - unbounded document creation from unauthenticated GETs."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CoinDetailModal", "issue": "Modal stays open after a successful order and Escape/backdrop do not close it - only the X button works; while open it overlays the bottom nav so nav clicks are pointer-intercepted (Playwright reported submit-order intercepting nav-wallet clicks).", "selector": "[data-testid='coin-detail-modal']", "priority": "MEDIUM"},
+      {"component": "Wallet > holdings", "issue": "Requirement says clicking a spot holding should open the coin modal defaulting to Sell; it opens in Buy mode (side-sell inactive), user must tap Sell manually.", "selector": "[data-testid='holding-ethereum']", "priority": "LOW"},
+      {"component": "CoinDetailModal amount input", "issue": "Sell mode number input shows the browser's native number spinner arrows (inconsistent with the custom theme).", "selector": "[data-testid='order-amount']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home / Wallet", "issues": ["Inconsistent currency formatting: header/total shows '$1000.00' and '$950.00' without a thousands separator while the sub-cards show '$1,000' / '$950 cash'."]},
+      {"screen": "Missions", "issues": ["All missions show a static 'Todo' badge with no clickable action; 'Make your first spot buy' stays Todo even after a successful buy (mission progress not wired to backend)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix DELETE /api/admin/charts/{id} 500 on invalid ObjectId (validate ObjectId.is_valid -> 400/404).",
+    "Stop making per-coin CoinGecko /coins/markets calls in spot_buy and enrich_holdings; reuse the batch markets cache or db.charts metadata so holdings/tx get the correct symbol/name/image (currently 'ETHEREUM' instead of 'ETH').",
+    "Map CoinGecko 429/upstream errors to 503 instead of 404 in POST /api/admin/charts; add retry/backoff and longer cache TTL (or a CoinGecko demo API key header) to reduce rate limiting.",
+    "Add brute-force lockout (5 failed admin logins) per playbook and set CORS_ORIGINS to explicit origins since allow_credentials=True.",
+    "Close CoinDetailModal after a successful order (or at least support Escape/backdrop close) so it never overlays the bottom nav.",
+    "Open the coin modal in Sell mode when launched from a Wallet holding; normalise currency formatting on Home/Wallet totals.",
+    "Avoid seeding/creating users on GET /api/user/{uid} (use POST /api/user/init only)."
+  ],
+  "critical_code_review_comments": [
+    "server.py delete_chart: ObjectId(chart_id) is unguarded -> bson.errors.InvalidId escapes as 500.",
+    "spot_buy/enrich_holdings duplicate the 'markets lookup then fallback' logic and issue one CoinGecko request per coin; centralise into a single cached resolver keyed by coin_id backed by the batch response.",
+    "cg_get returns None on failure and every caller conflates 'upstream failed' with 'not found' - propagate an error type.",
+    "spot_buy/spot_sell read-modify-write the holdings array with $set (no atomic update / no per-uid lock): two concurrent buys for the same uid can lose one update or double-spend the balance.",
+    "record_tx sets status='confirmed' then callers pass status='pending' via **extra which silently shadows it - make status an explicit parameter."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py", "/app/test_reports/iteration_2.json"],
+  "success_rate": {"backend": "91% (21/23 pytest; 2 failures = invalid-ObjectId 500 and holding symbol 'ETHEREUM')", "frontend": "95% (all core flows pass; modal close/default-sell nits)"},
+  "seed_data_creation": "Backend tests use uid QA_USER_1 (created and deleted via mongosh in a session fixture). Frontend created auto uids TK_RYLIVAIN / TK_5S2VICRK etc. in Mongo app_users with 1000 USDT / 50 TRX. A 'litecoin' chart was added and removed again by both backend and admin UI tests (chart list restored to the original 10).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Admin admin@tronkeeper.app / TronKeeper#Admin2026 (verified working; bcrypt hash in db.users starts with $2b$, login sets HttpOnly admin_token cookie + returns JWT).",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/backend_test.py -v -p no:randomly. CoinGecko public API 429s heavily in this container - if TestAdminCharts or price-dependent tests fail, wait ~60s and re-run before reporting (test_02_buy_eth symbol assertion is a REAL defect, not flakiness). Each browser_automation session starts with an empty localStorage, so a new uid is generated per run: buy and wallet verification must happen in the SAME script. The elevated centre Trade button needs force=True. Invite nav testid is 'nav-referrals' (not 'nav-invite'). CoinDetailModal must be closed via its X button before clicking bottom nav.",
+  "rca_of_the_issue": "All price/metadata defects trace to the CoinGecko free tier returning 429: cg_get caches per exact query string, so /api/charts (batch of 10 ids) is cached and fine, but spot_buy, enrich_holdings and add_chart each issue a NEW single-id /coins/markets request with a cold cache key. On 429 cg_get returns None, and callers interpret that as 'coin not found' (404 in add_chart) or fall back to coin_id.upper() for the symbol, which is then persisted into the user's holdings and transaction records. Reproduction: POST /api/spot/buy {coin_id:'ethereum'} during a rate-limited window -> holding.symbol == 'ETHEREUM'; backend.err.log shows 'CoinGecko error /coins/markets: 429'. Mitigation: single cached resolver over batch market data + 429-aware backoff/stale-serve and a distinct upstream-error status."
+}

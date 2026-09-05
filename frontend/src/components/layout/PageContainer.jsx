@@ -1,7 +1,9 @@
 export function PageContainer({ children, className = '' }) {
   return (
-    <div className={`min-h-screen bg-app-bg pb-24 ${className}`}>
-      <div className="max-w-md mx-auto relative">
+    <div className={`relative min-h-screen pb-28 ${className}`}>
+      <div className="tk-orb one" />
+      <div className="tk-orb two" />
+      <div className="relative z-10 max-w-md mx-auto">
         {children}
       </div>
     </div>

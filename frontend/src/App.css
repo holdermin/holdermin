@@ -1,51 +1,8 @@
-/* TronKeeper App Styles */
+/* TronKeeper — layout only; visual theme lives in index.css */
+.App { min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
 
-/* App container for Telegram Mini App simulation */
-.App {
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: #050505;
-  overflow-x: hidden;
-}
+body { overscroll-behavior-y: contain; }
 
-/* Ensure proper mobile viewport handling */
-@supports (height: 100dvh) {
-  .App {
-    min-height: 100dvh;
-  }
-}
-
-/* Page transitions */
-.page-enter {
-  opacity: 0;
-  transform: translateY(10px);
-}
-
-.page-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 150ms ease-out, transform 150ms ease-out;
-}
-
-.page-exit {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.page-exit-active {
-  opacity: 0;
-  transform: translateY(-10px);
-  transition: opacity 100ms ease-in, transform 100ms ease-in;
-}
-
-/* Prevent pull-to-refresh on mobile */
-body {
-  overscroll-behavior-y: contain;
-}
-
-/* Fix for iOS bottom safe area */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .safe-bottom {
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
-  }
+  .safe-bottom { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 }
