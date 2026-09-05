@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, TrendingUp, TrendingDown, Loader2 } from 'lucide-react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis, XAxis, ReferenceLine } from 'recharts';
 import { useWallet } from '@/contexts/WalletContext';
 import { getCoinChart, hapticFeedback } from '@/services/api';
 import { fmtPrice, fmtNum, fmtChange, changeColor } from '@/lib/format';
@@ -15,7 +15,7 @@ const RANGES = [
 ];
 
 export function CoinDetailModal({ chart, onClose, initialSide = 'buy' }) {
-  const { usdtBalance, holdings, buy, sell } = useWallet();
+  const { usdtBalance, holdings, buy, sell, updateTakeProfit } = useWallet();
   const [days, setDays] = useState('1');
   const [series, setSeries] = useState([]);
   const [loadingChart, setLoadingChart] = useState(true);
@@ -24,8 +24,18 @@ export function CoinDetailModal({ chart, onClose, initialSide = 'buy' }) {
   const [submitting, setSubmitting] = useState(false);
 
   const holding = holdings.find((h) => h.coin_id === chart.coin_id);
+  const [tp, setTp] = useState(holding?.tp_pct ? String(holding.tp_pct) : '');
+  const [savingTp, setSavingTp] = useState(false);
   const price = chart.price;
   const up = (chart.change_24h ?? 0) >= 0;
+
+  const saveTp = async () => {
+    setSavingTp(true);
+    const res = await updateTakeProfit(chart.coin_id, tp ? Number(tp) : 0);
+    setSavingTp(false);
+    if (res.success) toast.success(tp ? `Take Profit set at +${tp}%` : 'Take Profit cleared');
+    else toast.error(res.error || 'Failed');
+  };
 
   useEffect(() => {
     let active = true;
@@ -123,6 +133,10 @@ export function CoinDetailModal({ chart, onClose, initialSide = 'buy' }) {
                 </defs>
                 <XAxis dataKey="t" hide />
                 <YAxis hide domain={['dataMin', 'dataMax']} />
+                {holding?.avg_price && (
+                  <ReferenceLine y={holding.avg_price} stroke="#ffd166" strokeDasharray="4 3" strokeWidth={1.3}
+                    label={{ value: `buy $${fmtPrice(holding.avg_price)}`, position: 'insideTopRight', fill: '#ffd166', fontSize: 10, fontFamily: 'DM Mono' }} />
+                )}
                 <Tooltip
                   contentStyle={{ background: '#06131a', border: '1px solid rgba(140,242,219,.25)', borderRadius: 12, fontSize: 12 }}
                   labelFormatter={(t) => new Date(t).toLocaleString()}
@@ -213,6 +227,35 @@ export function CoinDetailModal({ chart, onClose, initialSide = 'buy' }) {
           {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
           {side === 'buy' ? `Buy ${chart.symbol}` : `Sell ${chart.symbol}`}
         </button>
+
+        {holding && (
+          <div className="mt-4 pt-4 border-t border-line" data-testid="take-profit-section">
+            <div className="flex items-center justify-between mb-2">
+              <p className="tk-label">Take Profit</p>
+              {holding.tp_pct ? (
+                <span className="tk-pill px-2 py-1 text-gold border-gold/40">active +{holding.tp_pct}%</span>
+              ) : (
+                <span className="tk-label">auto-sell at gain</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input type="number" inputMode="decimal" value={tp} onChange={(e) => setTp(e.target.value)}
+                  placeholder="Target gain %" data-testid="tp-input"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-line text-ink font-mono placeholder:text-mutedink/60 focus:outline-none focus:border-gold/50" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 tk-label">%</span>
+              </div>
+              <button onClick={saveTp} disabled={savingTp} data-testid="save-tp"
+                className="px-4 rounded-xl font-semibold text-deep glow-gold disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg,#ffe08a,#ffd166)' }}>
+                {holding.tp_pct && !tp ? 'Clear' : 'Set'}
+              </button>
+            </div>
+            <p className="text-[10px] text-mutedink/70 mt-2 font-mono">
+              We'll auto-sell {chart.symbol} to USDT once your gain reaches the target.
+            </p>
+          </div>
+        )}
 
         <p className="text-center text-[10px] text-mutedink/70 mt-3 font-mono">
           Spot holdings can't be withdrawn — sell to USDT first.

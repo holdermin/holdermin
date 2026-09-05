@@ -1,11 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import {
   initTelegram, getTelegramUser, getUid,
   initUser, getCharts, getUserTransactions,
   spotBuy, spotSell, withdrawFunds,
+  getPool, setTakeProfit, checkTakeProfit,
 } from '@/services/api';
 
 const WalletContext = createContext(null);
+const POLL_MS = 15000;
 
 export function WalletProvider({ children }) {
   const [uid, setUid] = useState(null);
@@ -20,9 +23,11 @@ export function WalletProvider({ children }) {
   const [trxFromRefs, setTrxFromRefs] = useState(0);
 
   const [charts, setCharts] = useState([]);
+  const [pool, setPool] = useState({ total: 30000, remaining: 30000, distributed: 0 });
   const [transactions, setTransactions] = useState([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const pollRef = useRef(null);
+  const uidRef = useRef(null);
 
   const applyUser = (u) => {
     if (!u) return;
@@ -34,12 +39,12 @@ export function WalletProvider({ children }) {
   };
 
   const refreshCharts = useCallback(async () => {
-    try {
-      const res = await getCharts();
-      if (res.ok) setCharts(res.charts || []);
-    } catch (e) {
-      console.error('charts error', e);
-    }
+    try { const res = await getCharts(); if (res.ok) setCharts(res.charts || []); }
+    catch (e) { console.error('charts error', e); }
+  }, []);
+
+  const refreshPool = useCallback(async () => {
+    try { const res = await getPool(); if (res.ok) setPool(res.pool); } catch (e) {}
   }, []);
 
   const load = useCallback(async () => {
@@ -49,50 +54,45 @@ export function WalletProvider({ children }) {
       initTelegram();
       setTgUser(getTelegramUser());
       const id = getUid();
-      setUid(id);
+      setUid(id); uidRef.current = id;
       const res = await initUser(id);
       if (res.ok) applyUser(res.user);
-      await refreshCharts();
+      await Promise.all([refreshCharts(), refreshPool()]);
     } catch (e) {
       console.error(e);
       setError('Failed to connect. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [refreshCharts]);
+  }, [refreshCharts, refreshPool]);
 
   const loadTransactions = useCallback(async () => {
-    if (!uid) return;
+    if (!uidRef.current) return;
     setLoadingTransactions(true);
-    try {
-      const res = await getUserTransactions(uid);
-      if (res.ok) setTransactions(res.transactions || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingTransactions(false);
-    }
-  }, [uid]);
+    try { const res = await getUserTransactions(uidRef.current); if (res.ok) setTransactions(res.transactions || []); }
+    catch (e) { console.error(e); }
+    finally { setLoadingTransactions(false); }
+  }, []);
 
   const buy = useCallback(async (coinId, quoteAmount) => {
     try {
-      const res = await spotBuy(uid, coinId, quoteAmount);
+      const res = await spotBuy(uidRef.current, coinId, quoteAmount);
       if (res.ok) { applyUser(res.user); return { success: true, filled: res.filled }; }
       return { success: false, error: 'Buy failed' };
     } catch (e) { return { success: false, error: e.message }; }
-  }, [uid]);
+  }, []);
 
   const sell = useCallback(async (coinId, baseAmount) => {
     try {
-      const res = await spotSell(uid, coinId, baseAmount);
+      const res = await spotSell(uidRef.current, coinId, baseAmount);
       if (res.ok) { applyUser(res.user); return { success: true, filled: res.filled }; }
       return { success: false, error: 'Sell failed' };
     } catch (e) { return { success: false, error: e.message }; }
-  }, [uid]);
+  }, []);
 
   const withdraw = useCallback(async (asset, amount, toAddress) => {
     try {
-      const res = await withdrawFunds(uid, asset, amount, toAddress);
+      const res = await withdrawFunds(uidRef.current, asset, amount, toAddress);
       if (res.ok) {
         if (asset.toUpperCase() === 'USDT') setUsdtBalance(res.new_balance);
         else setTrxBalance(res.new_balance);
@@ -101,26 +101,52 @@ export function WalletProvider({ children }) {
       }
       return { success: false, error: 'Withdraw failed' };
     } catch (e) { return { success: false, error: e.message }; }
-  }, [uid, loadTransactions]);
+  }, [loadTransactions]);
+
+  const updateTakeProfit = useCallback(async (coinId, pct) => {
+    try {
+      const res = await setTakeProfit(uidRef.current, coinId, pct);
+      if (res.ok) {
+        applyUser(res.user);
+        if (res.executed?.length) {
+          res.executed.forEach((e) => toast.success(`Take Profit hit: sold ${e.symbol} at +${e.pnl_pct}% ($${e.quote})`));
+        }
+        return { success: true };
+      }
+      return { success: false, error: 'Failed' };
+    } catch (e) { return { success: false, error: e.message }; }
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // poll charts for live prices
+  // live poll: prices + take-profit checks
   useEffect(() => {
     if (loading) return;
-    pollRef.current = setInterval(refreshCharts, 60000);
+    const tick = async () => {
+      await refreshCharts();
+      try {
+        const res = await checkTakeProfit(uidRef.current);
+        if (res.ok && res.user) applyUser(res.user);
+        if (res.executed?.length) {
+          res.executed.forEach((e) => toast.success(`Take Profit hit: sold ${e.symbol} at +${e.pnl_pct}% ($${e.quote})`));
+          loadTransactions();
+          refreshPool();
+        }
+      } catch (e) {}
+    };
+    pollRef.current = setInterval(tick, POLL_MS);
     return () => clearInterval(pollRef.current);
-  }, [loading, refreshCharts]);
+  }, [loading, refreshCharts, loadTransactions, refreshPool]);
 
   const portfolioValue = holdings.reduce((sum, h) => sum + (h.value || 0), 0);
 
   const value = {
     uid, tgUser, loading, error,
     usdtBalance, trxBalance, holdings, portfolioValue,
-    totalRefs, trxFromRefs,
+    totalRefs, trxFromRefs, pool,
     charts, refreshCharts,
     transactions, loadingTransactions, loadTransactions,
-    buy, sell, withdraw, reload: load,
+    buy, sell, withdraw, updateTakeProfit, reload: load,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

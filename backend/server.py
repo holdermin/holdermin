@@ -89,7 +89,7 @@ async def get_markets(coin_ids: List[str]):
     data = await cg_get('/coins/markets', {
         'vs_currency': 'usd', 'ids': ids, 'sparkline': 'true',
         'price_change_percentage': '24h', 'per_page': 250, 'page': 1,
-    }, ttl=45)
+    }, ttl=20)
     return data  # None on upstream failure, [] if unknown ids
 
 
@@ -177,6 +177,19 @@ class Withdraw(BaseModel):
     asset: str  # USDT or TRX
     amount: float
     to_address: str
+
+
+class TakeProfit(BaseModel):
+    uid: str
+    coin_id: str
+    pct: Optional[float] = None  # target gain %, None/0 clears it
+
+
+class CheckTP(BaseModel):
+    uid: str
+
+
+REWARD_POOL_TOTAL = float(os.environ.get('REWARD_POOL_TRX', '30000'))
 
 
 # ----------------------------------------------------------------------------
@@ -350,10 +363,11 @@ async def enrich_holdings(holdings: List[dict]):
     if not holdings:
         return []
     ids = [h['coin_id'] for h in holdings]
-    markets = await get_markets(ids) or []
+    # fetch the full chart batch (warm cache shared with /charts) then map
+    chart_docs = await db.charts.find().sort('order', 1).to_list(200)
+    chart_ids = [c['coin_id'] for c in chart_docs]
+    markets = await get_markets(chart_ids if chart_ids else ids) or []
     mk = {m['id']: m for m in markets}
-    # fall back to stored chart metadata for symbol/name/image
-    chart_docs = await db.charts.find({'coin_id': {'$in': ids}}).to_list(200)
     cd = {c['coin_id']: c for c in chart_docs}
     out = []
     for h in holdings:
@@ -387,7 +401,9 @@ async def enrich_holdings(holdings: List[dict]):
 
 @api.post('/user/init')
 async def init_user(body: InitUser):
-    u = await get_or_create_user(body.uid)
+    await get_or_create_user(body.uid)
+    await execute_take_profit(body.uid)
+    u = await db.app_users.find_one({'uid': body.uid})
     pub = user_public(u)
     pub['holdings'] = await enrich_holdings(u.get('holdings', []))
     return {'ok': True, 'user': pub}
@@ -419,6 +435,94 @@ async def record_tx(uid, type_, asset, amount, **extra):
     }
     await db.transactions.insert_one(dict(tx))
     return tx
+
+
+async def execute_take_profit(uid: str):
+    """Sell any holding whose live gain% has reached its take-profit target."""
+    u = await db.app_users.find_one({'uid': uid})
+    if not u:
+        return [], u
+    holdings = u.get('holdings', [])
+    tp_holdings = [h for h in holdings if h.get('tp_pct')]
+    if not tp_holdings:
+        return [], u
+    # Use the SAME batch as /charts (warm cache) to avoid per-coin 429s
+    chart_docs = await db.charts.find().sort('order', 1).to_list(200)
+    chart_ids = [c['coin_id'] for c in chart_docs]
+    markets = await get_markets(chart_ids) or []
+    mk = {m['id']: m for m in markets}
+    executed = []
+    remaining = []
+    new_usdt = u.get('usdt_balance', 0)
+    changed = False
+    for h in holdings:
+        tp = h.get('tp_pct')
+        m = mk.get(h['coin_id'], {})
+        price = m.get('current_price')
+        if tp and price:
+            amount = h.get('amount', 0)
+            cost = h.get('avg_price', 0) * amount
+            value = price * amount
+            pnl_pct = ((value - cost) / cost * 100) if cost else 0
+            if pnl_pct >= tp:
+                new_usdt += value
+                changed = True
+                await record_tx(uid, 'take_profit', h.get('symbol', ''), amount,
+                                price=price, quote=value, coin_id=h['coin_id'],
+                                description=f'Take profit {h.get("symbol", "")} +{round(pnl_pct, 2)}%')
+                executed.append({'symbol': h.get('symbol', ''), 'pnl_pct': round(pnl_pct, 2),
+                                 'quote': round(value, 2), 'target': tp})
+                continue
+        remaining.append(h)
+    if changed:
+        await db.app_users.update_one({'uid': uid},
+                                      {'$set': {'usdt_balance': new_usdt, 'holdings': remaining}})
+        u = await db.app_users.find_one({'uid': uid})
+    return executed, u
+
+
+async def get_pool():
+    doc = await db.config.find_one({'_id': 'reward_pool'})
+    if not doc:
+        doc = {'_id': 'reward_pool', 'total': REWARD_POOL_TOTAL, 'distributed': 0.0}
+        await db.config.insert_one(dict(doc))
+    total = doc.get('total', REWARD_POOL_TOTAL)
+    distributed = doc.get('distributed', 0.0)
+    return {'total': total, 'distributed': round(distributed, 2),
+            'remaining': round(total - distributed, 2)}
+
+
+@api.get('/pool')
+async def pool():
+    return {'ok': True, 'pool': await get_pool()}
+
+
+@api.post('/spot/take-profit')
+async def set_take_profit(body: TakeProfit):
+    u = await get_or_create_user(body.uid)
+    holdings = u.get('holdings', [])
+    found = next((h for h in holdings if h['coin_id'] == body.coin_id), None)
+    if not found:
+        raise HTTPException(status_code=400, detail='No holding for this coin')
+    if body.pct and body.pct > 0:
+        found['tp_pct'] = round(float(body.pct), 2)
+    else:
+        found.pop('tp_pct', None)
+    await db.app_users.update_one({'uid': body.uid}, {'$set': {'holdings': holdings}})
+    executed, u = await execute_take_profit(body.uid)
+    pub = user_public(u)
+    pub['holdings'] = await enrich_holdings(u.get('holdings', []))
+    return {'ok': True, 'user': pub, 'executed': executed}
+
+
+@api.post('/spot/check-tp')
+async def check_take_profit(body: CheckTP):
+    executed, u = await execute_take_profit(body.uid)
+    if not u:
+        return {'ok': True, 'executed': [], 'user': None}
+    pub = user_public(u)
+    pub['holdings'] = await enrich_holdings(u.get('holdings', []))
+    return {'ok': True, 'executed': executed, 'user': pub}
 
 
 # ----------------------------------------------------------------------------
@@ -573,6 +677,8 @@ async def startup():
                 'created_at': datetime.now(timezone.utc).isoformat(),
             })
         logger.info('Seeded default charts')
+    # seed reward pool
+    await get_pool()
 
 
 @app.on_event('shutdown')

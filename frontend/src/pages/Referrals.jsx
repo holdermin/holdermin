@@ -6,9 +6,10 @@ import { fmtNum } from '@/lib/format';
 const BOT = 'https://t.me/TKcex_bot';
 
 export function ReferralsPage() {
-  const { uid, totalRefs, trxFromRefs } = useWallet();
+  const { uid, totalRefs, trxFromRefs, pool } = useWallet();
   const [copied, setCopied] = useState(false);
   const link = `${BOT}?start=${uid || ''}`;
+  const pct = pool && pool.total ? Math.min(100, (pool.distributed / pool.total) * 100) : 0;
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch {}
@@ -29,6 +30,22 @@ export function ReferralsPage() {
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="tk-card p-4"><p className="tk-label">Invited</p><p className="text-2xl font-bold text-ink font-mono mt-1">{totalRefs}</p></div>
         <div className="tk-card p-4"><p className="tk-label">TRX earned</p><p className="text-2xl font-bold text-mint font-mono mt-1">{fmtNum(trxFromRefs, 2)}</p></div>
+      </div>
+
+      {/* Reward pool */}
+      <div className="tk-card p-5 mb-5" data-testid="reward-pool">
+        <div className="flex items-center justify-between mb-1">
+          <p className="tk-label">Reward pool</p>
+          <span className="tk-pill px-2.5 py-1 text-gold border-gold/40">30,000 TRX</span>
+        </div>
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className="text-2xl font-bold text-ink font-mono">{fmtNum(pool?.remaining ?? 30000, 0)}</span>
+          <span className="text-sm text-mutedink">TRX remaining</span>
+        </div>
+        <div className="h-2.5 rounded-full bg-white/8 overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#ffd166,#8cf2db)' }} />
+        </div>
+        <p className="tk-label mt-2">{fmtNum(pool?.distributed ?? 0, 0)} TRX distributed · shared with every keeper</p>
       </div>
 
       <div className="tk-card p-5">

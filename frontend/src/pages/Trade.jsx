@@ -12,7 +12,13 @@ export function TradePage() {
   return (
     <div className="px-4 py-4" data-testid="trade-page">
       <div className="mb-5">
-        <p className="tk-label">Live markets · CoinGecko</p>
+        <div className="flex items-center gap-2">
+          <p className="tk-label">Live markets · CoinGecko</p>
+          <span className="inline-flex items-center gap-1.5 tk-label text-mint">
+            <i className="w-[6px] h-[6px] rounded-full bg-mint" style={{ boxShadow: '0 0 0 3px rgba(140,242,219,.12),0 0 10px #8cf2db', animation: 'beacon 2.2s ease-in-out infinite' }} />
+            LIVE
+          </span>
+        </div>
         <h1 className="tk-heading text-3xl text-ink mt-1 flex items-center gap-2">
           <CandlestickChart className="w-7 h-7 text-mint" /> Trade
         </h1>

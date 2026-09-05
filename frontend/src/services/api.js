@@ -83,6 +83,11 @@ export const spotSell = (uid, coinId, baseAmount) =>
   req('/spot/sell', { method: 'POST', body: { uid, coin_id: coinId, base_amount: baseAmount } });
 export const withdrawFunds = (uid, asset, amount, toAddress) =>
   req('/wallet/withdraw', { method: 'POST', body: { uid, asset, amount, to_address: toAddress } });
+export const getPool = () => req('/pool');
+export const setTakeProfit = (uid, coinId, pct) =>
+  req('/spot/take-profit', { method: 'POST', body: { uid, coin_id: coinId, pct } });
+export const checkTakeProfit = (uid) =>
+  req('/spot/check-tp', { method: 'POST', body: { uid } });
 
 // ----------------------------------------------------------------------------
 // Admin endpoints
@@ -97,7 +102,7 @@ export const adminDeleteChart = (chartId, token) =>
 
 export default {
   getCharts, initUser, getUser, getUserTransactions, getCoinChart, searchCoins,
-  spotBuy, spotSell, withdrawFunds,
+  spotBuy, spotSell, withdrawFunds, getPool, setTakeProfit, checkTakeProfit,
   adminLogin, adminMe, adminAddChart, adminDeleteChart,
   getUid, hapticFeedback, getTelegramUser, initTelegram,
 };
