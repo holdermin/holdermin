@@ -29,6 +29,16 @@ const MOCK_CYCLE = {
   remaining_holds: 3,
 };
 
+const now = Date.now();
+const MOCK_TRANSACTIONS = [
+  { id: 'tx_1', type: 'reward', asset: 'USDT', amount: 0.15, status: 'confirmed', timestamp: new Date(now - 1 * 3600e3).toISOString(), description: 'Hold reward claimed' },
+  { id: 'tx_2', type: 'deposit', asset: 'USDT', amount: 10.0, status: 'confirmed', timestamp: new Date(now - 6 * 3600e3).toISOString() },
+  { id: 'tx_3', type: 'referral', asset: 'TRX', amount: 2.0, status: 'confirmed', timestamp: new Date(now - 20 * 3600e3).toISOString(), description: 'Referral bonus' },
+  { id: 'tx_4', type: 'withdraw', asset: 'USDT', amount: 5.0, status: 'pending', timestamp: new Date(now - 26 * 3600e3).toISOString(), toAddress: 'TNjqVzo47ndAvH241njkMLKbda3G6FPgVs' },
+  { id: 'tx_5', type: 'reward', asset: 'USDT', amount: 0.15, status: 'confirmed', timestamp: new Date(now - 48 * 3600e3).toISOString(), description: 'Hold reward claimed' },
+  { id: 'tx_6', type: 'withdraw', asset: 'TRX', amount: 3.5, status: 'confirmed', timestamp: new Date(now - 72 * 3600e3).toISOString(), toAddress: 'TWd4kZ8h1pQmRfa9cX2bNvUj7sLmYpG3tZ' },
+];
+
 // ============================================
 // TELEGRAM HELPERS
 // ============================================
@@ -244,10 +254,10 @@ export const getTransactions = async () => {
   try {
     const result = await apiCall('/transactions');
     if (result) return result;
-    return { ok: true, transactions: [] };
+    return { ok: true, transactions: MOCK_TRANSACTIONS };
   } catch (error) {
     console.error('Transactions error:', error);
-    return { ok: true, transactions: [] };
+    return { ok: true, transactions: MOCK_TRANSACTIONS };
   }
 };
 

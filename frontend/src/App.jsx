@@ -12,7 +12,7 @@ import { HomePage } from '@/pages/Home';
 import { WalletPage } from '@/pages/Wallet';
 import { MissionsPage } from '@/pages/Missions';
 import { ReferralsPage } from '@/pages/Referrals';
-import { HistoryPage } from '@/pages/History';
+import { TradePage } from '@/pages/Trade';
 
 import '@/App.css';
 
@@ -120,7 +120,7 @@ function AppContent() {
           )}
           {activeTab === 'missions' && <MissionsPage />}
           {activeTab === 'referrals' && <ReferralsPage />}
-          {activeTab === 'history' && <HistoryPage />}
+          {activeTab === 'trade' && <TradePage />}
         </motion.div>
       </AnimatePresence>
 

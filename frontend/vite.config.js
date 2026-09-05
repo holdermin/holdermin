@@ -17,8 +17,7 @@ export default defineConfig({
       '127.0.0.1',
       '.emergentagent.com',
       '.preview.emergentagent.com',
-      '.cluster-5.preview.emergentcf.cloud',
-      'crypto-clean-1.cluster-5.preview.emergentcf.cloud',
+      '.preview.emergentcf.cloud',
     ],
   },
   build: {

@@ -1,0 +1,46 @@
+{
+  "summary": "Frontend-only E2E testing (no backend, mocked API) of the TronKeeper mini-app on the public preview URL at 390x844 mobile viewport. Verified: 5-item bottom nav with elevated center Trade button and removal of the old History tab; Trade page renders 10 default TradingView chart cards (all 10 iframes loaded); add-chart via free-text ticker (LINK -> chart-card-LINKUSDT prepended to grid, modal closes); add via popular suggestion chip (DOT); duplicate ticker (BTC) shows inline error 'BTC is already on your list' and does not add; remove chart (DOTUSDT) removes card; localStorage persistence across reload (LINK kept, removed DOT stayed removed, total 11); expand -> chart-detail-modal renders advanced BTC candlestick chart and closes; reset restores exactly 10 defaults and drops custom charts; Wallet page segmented Assets/History tabs, total balance + balance cards + deposit info on Assets, transaction-list with 6 sample rows and 4 working filter chips on History; Home page loads. All 13 requested scenarios passed functionally. Only issue found: 10 uncaught 'Cannot read properties of null (reading querySelector)' page errors (one per widget) thrown on every Trade page mount, plus a card-header overlap design nit.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "TradingViewWidget",
+        "issue": "10 uncaught page errors 'Cannot read properties of null (reading \\'querySelector\\')' are thrown every time the Trade page mounts (one per chart) and again on each re-mount (20 after nav away+back). Root cause: the effect does container.innerHTML='' (also on the React StrictMode double-invoke cleanup) so the TradingView embed script's document.currentScript.parentNode is already detached when it executes. Rendering is NOT broken (all 10 iframes load), but the console is polluted and this can mask real errors / trip error-reporting tools.",
+        "selector": "[data-testid^=\"chart-widget-\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Trade page chart cards",
+        "issues": [
+          "The floating expand/remove controls (absolute top-2 right-2) sit directly on top of the TradingView widget's symbol title, so the ticker is visually cut/overlapped ('BTCUSD\u2b0c', 'ETHUSD\u2b0c', 'SOLUSD\u2b0c') and the sub-label 'BITCOIN / TETHERU...' is truncated. Suggest moving the controls to the bottom-right, shrinking them, or adding a top-right gutter/gradient so the symbol text stays readable.",
+          "Minor: some external mini widgets (TON, SOL) render the price but the sparkline area stays empty; external TradingView data, not a code defect."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix the recurring uncaught 'querySelector of null' errors from the TradingView embed: instead of container.innerHTML = '' in the effect/cleanup, create a dedicated wrapper node per mount and remove that node, or guard against StrictMode double-invocation (e.g. keep the script inside the widget div and remove the whole wrapper on unmount).",
+    "Adjust ChartCard layout so the expand/remove buttons no longer overlap the widget's symbol title/sub-label."
+  ],
+  "critical_code_review_comments": [
+    "TradingViewWidget: clearing innerHTML in both the effect body and the cleanup makes the injected external script execute against a detached parent under React StrictMode -> uncaught errors. Use a per-mount wrapper element and remove it, and do not clear the container synchronously in the same effect run.",
+    "cryptoSymbols.buildChartEntry: ticker sanitisation via raw.replace(/USDT|USD|USDC/g,'') strips those substrings anywhere in the string, so inputs like 'USDC' or 'SUSHIUSD' can produce odd ids (e.g. '' -> 'USDT' pair). Consider anchoring the regex to the end of the string and rejecting empty tickers.",
+    "No validation that a typed ticker actually exists on Binance; an unknown ticker will silently render an empty TradingView card. Consider showing the widget's 'invalid symbol' state or validating against a symbol list.",
+    "TradePage persists to localStorage on every state change including the initial mount, which writes the defaults immediately; harmless but means 'never touched' and 'reset' states are indistinguishable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (no backend)", "frontend": "100% of 13 requested functional scenarios passed"},
+  "seed_data_creation": "None. localStorage cleared before persistence test; charts LINKUSDT/DOTUSDT created and cleaned up via reset.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "None required (dev/mock mode, no auth)",
+  "context_for_next_testing_agent": "Frontend-only app, no backend. Public preview URL works. All Trade/Wallet flows verified passing at 390x844. Remember: clicking data-testid='nav-trade' needs force=True (elevated -mt-8 button). Clear localStorage (key tk_trade_charts_v1) before persistence tests. Allow ~4-8s for TradingView iframes. Outstanding: TradingViewWidget uncaught querySelector errors and ChartCard control/title overlap.",
+  "rca_of_the_issue": "The 10 uncaught 'Cannot read properties of null (reading querySelector)' errors originate in TradingView's external embed script: /app/frontend/src/components/trade/TradingViewWidget.jsx clears its container with innerHTML = '' both at the start of the effect and in the cleanup. Under React 18 StrictMode the effect runs twice, so the first-injected <script> is detached before it executes and its document.currentScript.parentNode.querySelector(...) resolves to null. Reproduce: open Trade page, watch pageerror events (10 per mount, +10 per re-mount). Mitigation: append a fresh wrapper div holding both widget div and script, and on cleanup call wrapper.remove() instead of clearing the shared container."
+}
